@@ -1,30 +1,55 @@
 
+import { db } from '../db';
+import { countersTable } from '../db/schema';
 import { type UpdateCounterInput, type Counter } from '../schema';
+import { eq, sql } from 'drizzle-orm';
 
 export async function updateCounter(input: UpdateCounterInput): Promise<Counter> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is updating the counter value based on the operation:
-    // - 'increment': increase value by 1
-    // - 'decrement': decrease value by 1  
-    // - 'reset': set value to 0
-    // Should return the updated counter with new timestamp.
-    
-    let newValue = 0;
-    switch (input.operation) {
-        case 'increment':
-            newValue = 1; // Placeholder - should get current value and add 1
-            break;
-        case 'decrement':
-            newValue = -1; // Placeholder - should get current value and subtract 1
-            break;
-        case 'reset':
-            newValue = 0;
-            break;
+  try {
+    // First, ensure we have a counter record (create if doesn't exist)
+    let counter = await db.select()
+      .from(countersTable)
+      .limit(1)
+      .execute();
+
+    if (counter.length === 0) {
+      // Create initial counter with value 0
+      const result = await db.insert(countersTable)
+        .values({ value: 0 })
+        .returning()
+        .execute();
+      counter = result;
     }
-    
-    return Promise.resolve({
-        id: 1,
+
+    const currentCounter = counter[0];
+    let newValue: number;
+
+    // Calculate new value based on operation
+    switch (input.operation) {
+      case 'increment':
+        newValue = currentCounter.value + 1;
+        break;
+      case 'decrement':
+        newValue = currentCounter.value - 1;
+        break;
+      case 'reset':
+        newValue = 0;
+        break;
+    }
+
+    // Update the counter with new value and timestamp
+    const updatedResult = await db.update(countersTable)
+      .set({ 
         value: newValue,
-        updated_at: new Date()
-    } as Counter);
+        updated_at: sql`NOW()` // Use SQL NOW() for accurate server timestamp
+      })
+      .where(eq(countersTable.id, currentCounter.id))
+      .returning()
+      .execute();
+
+    return updatedResult[0];
+  } catch (error) {
+    console.error('Counter update failed:', error);
+    throw error;
+  }
 }
